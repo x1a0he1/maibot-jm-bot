@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JMbot 管理后台</title>
+  <style>
+    :root { color-scheme: light; font: 14px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; color: #20262d; background: #f4f6f7; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; color: #fff; background: #183e42; }
+    header strong { font-size: 16px; }
+    header a { color: inherit; }
+    button, input, select, textarea { font: inherit; }
+    button { min-height: 34px; padding: 6px 12px; border: 1px solid #b7c1c5; border-radius: 4px; color: #253338; background: #fff; cursor: pointer; }
+    button:hover { background: #edf3f2; }
+    button.primary { color: #fff; border-color: #176b61; background: #176b61; }
+    button.danger { color: #9a3030; }
+    input, select, textarea { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #bdc7ca; border-radius: 4px; color: #20262d; background: #fff; }
+    textarea { min-height: 120px; resize: vertical; }
+    label { display: grid; gap: 5px; color: #475258; }
+    .shell { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: calc(100vh - 56px); }
+    nav { padding: 14px 10px; background: #e9eeed; border-right: 1px solid #d2dada; }
+    nav button { display: flex; width: 100%; justify-content: flex-start; margin: 3px 0; border-color: transparent; background: transparent; }
+    nav button.active { color: #145e55; background: #d8e8e4; border-color: #bdd8d1; }
+    nav .nav-group { margin: 10px 0 2px; }
+    nav .nav-group > span { display: block; padding: 4px 8px; font-size: 12px; color: #6b7a77; letter-spacing: .06em; }
+    nav .nav-group button { padding-left: 12px; }
+    main { max-width: 1120px; width: 100%; padding: 24px; }
+    h1 { margin: 0 0 18px; font-size: 21px; font-weight: 650; }
+    h2 { margin: 22px 0 10px; font-size: 15px; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .panel { padding: 14px 0; border-top: 1px solid #d6dddd; }
+    .status { display: inline-flex; align-items: center; gap: 7px; padding: 5px 9px; border-radius: 4px; background: #e8eeec; }
+    .status::before { width: 8px; height: 8px; border-radius: 50%; background: #82908d; content: ""; }
+    .status.ok::before { background: #238b5c; }
+    .status.bad::before { background: #c34747; }
+    .muted { color: #657177; }
+    .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid #d8dede; }
+    .item small { display: block; color: #657177; }
+    .check { display: flex; gap: 8px; align-items: center; }
+    .check input { width: 16px; min-height: 16px; }
+    #login { max-width: 360px; margin: 12vh auto; padding: 28px; background: #fff; border: 1px solid #d7dede; border-radius: 5px; }
+    #login h1 { margin-bottom: 20px; }
+    #login form { display: grid; gap: 14px; }
+    #notice { position: fixed; right: 18px; bottom: 18px; max-width: min(420px, calc(100vw - 36px)); padding: 10px 14px; color: #fff; background: #263d3d; border-radius: 4px; display: none; }
+    pre { overflow: auto; padding: 12px; background: #edf0f0; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    @media (max-width: 720px) {
+      .shell { grid-template-columns: 1fr; }
+      nav { display: flex; overflow-x: auto; gap: 4px; padding: 6px; border-right: 0; border-bottom: 1px solid #d2dada; }
+      nav button { width: auto; flex: 0 0 auto; white-space: nowrap; }
+      nav .nav-group { display: flex; align-items: center; gap: 4px; margin: 0; }
+      nav .nav-group > span { padding: 0 4px; }
+      nav .nav-group button { padding-left: 8px; }
+      main { padding: 18px 14px; }
+      .grid { grid-template-columns: 1fr; }
+      header { padding: 0 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="login">
+    <h1>JMbot 管理后台</h1>
+    <form id="login-form">
+      <label>管理员 QQ 号<input name="qq_id" inputmode="numeric" required></label>
+      <label>后台密码<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit">登录</button>
+    </form>
+    <p><!-- JM_SOURCE_LINK --></p>
+  </div>
+  <div id="app" hidden>
+    <header><strong>JMbot 管理后台</strong><div class="row"><!-- JM_SOURCE_LINK --><span id="identity"></span><button id="logout">退出</button></div></header>
+    <div class="shell">
+      <nav id="nav">
+        <button data-page="monitor" class="active">状态</button>
+        <div class="nav-group"><span>监控</span>
+          <button data-page="groups">群聊</button>
+          <button data-page="friends">私聊</button>
+          <button data-page="approvals">申请</button>
+        </div>
+        <div class="nav-group"><span>下载</span>
+          <button data-page="download-perms">会话权限</button>
+          <button data-page="download-queue">队列</button>
+          <button data-page="download-help">帮助文本</button>
+        </div>
+        <button id="admin-nav" data-page="admins" hidden>管理员账号</button>
+      </nav>
+      <main>
+        <section class="section active" id="page-monitor"><h1>运行状态</h1><div id="services"></div><div class="panel"><h2>全局业务开关</h2><label class="check"><input id="global-download" type="checkbox">下载功能</label><button id="save-global" class="primary">保存</button></div><div class="panel"><h2>QQ 登录状态</h2><div id="login-qr-state" class="muted">读取 NapCat 登录状态；掉线时点「获取二维码」扫码登录。</div></div><button id="refresh-status">刷新</button></section>
+        <section class="section" id="page-groups"><h1>群聊监控</h1><div class="panel"><div class="row"><label>搜索<input id="monitor-group-search" placeholder="群号 / 群名 / 备注"></label><button id="refresh-groups">刷新</button></div><div id="monitor-group-list" class="muted">加载中…</div></div></section>
+        <section class="section" id="page-friends"><h1>私聊监控</h1><div class="panel"><div class="row"><label>搜索<input id="monitor-friend-search" placeholder="QQ / 昵称 / 备注"></label><button id="refresh-friends">刷新</button></div><div id="monitor-friend-list" class="muted">加载中…</div></div></section>
+        <section class="section" id="page-approvals"><h1>好友与群申请</h1><div class="row"><button data-approval="pending" class="primary">待处理</button><button data-approval="approved">已通过</button><button data-approval="rejected">已拒绝</button></div><div id="approval-list" class="panel"></div></section>
+        <section class="section" id="page-download-perms"><h1>下载会话权限</h1><div class="panel"><div class="grid"><label>类型<select id="download-kind"><option value="group">群聊</option><option value="private">私聊</option></select></label><label>群号或好友 QQ<input id="download-owner" inputmode="numeric"></label></div><p><button id="add-download-scope" class="primary">添加会话</button></p><div class="row"><label>分类<select id="download-kind-filter"><option value="">全部</option><option value="group">群聊</option><option value="private">私聊</option></select></label><label>搜索<input id="download-search" placeholder="群号或 QQ" inputmode="numeric"></label></div><div id="download-status"></div></div></section>
+        <section class="section" id="page-download-queue"><h1>下载队列</h1><div class="panel"><div class="row"><button id="refresh-queue">刷新队列</button><button id="clear-queue" class="danger">清空待处理</button><button id="clear-finished" class="danger">清空已完成</button><label class="check"><input id="show-finished" type="checkbox">显示已完成</label></div><div id="queue-actions" class="muted"></div><div id="download-queue"></div></div></section>
+        <section class="section" id="page-download-help"><h1>下载帮助文本</h1><div class="panel"><label>帮助文本<textarea id="help-text"></textarea></label><button id="save-help" class="primary">保存帮助文本</button></div></section>
+        <section class="section" id="page-admins"><h1>管理员账号</h1><div id="admin-list"></div><div class="grid panel"><label>管理员 QQ<input id="new-admin-qq" inputmode="numeric"></label><label>设置后台密码<input id="new-admin-password" type="password" autocomplete="new-password"></label></div><p><button id="add-admin" class="primary">添加管理员</button></p></section>
+      </main>
+    </div>
+  </div>
+  <div id="notice"></div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let me = null;
+    async function api(url, options = {}) {
+      const csrf = document.cookie.split("; ").find(value => value.startsWith("jmbot_csrf="))?.split("=")[1] || "";
+      const response = await fetch(url, { credentials: "same-origin", ...options, headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf, ...(options.headers || {}) } });
+      if (response.status === 401) { showLogin(); throw new Error("登录状态已失效"); }
+      const data = response.status === 204 ? {} : await response.json();
+      if (!response.ok) throw new Error(data.detail || "操作失败");
+      return data;
+    }
+    function note(text) { $("notice").textContent = text; $("notice").style.display = "block"; setTimeout(() => $("notice").style.display = "none", 2600); }
+    function showLogin() { $("login").hidden = false; $("app").hidden = true; }
+    async function enterApp() { me = await api("/api/me"); $("identity").textContent = `QQ ${me.qq_id}`; $("admin-nav").hidden = !me.is_super; $("login").hidden = true; $("app").hidden = false; await Promise.all([loadStatus(), loadApprovals("pending"), loadHelp(), loadGlobalPolicy(), loadQr()]); }
+    $("login-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await api("/api/login", { method: "POST", body: JSON.stringify({ qq_id: Number(form.get("qq_id")), password: form.get("password") }) }); await enterApp(); } catch (error) { note(error.message); } });
+    $("logout").onclick = async () => { await api("/api/logout", { method: "POST" }); showLogin(); };
+    $("nav").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-page]");
+      if (!button) return;
+      const page = button.dataset.page;
+      document.querySelectorAll("nav button").forEach((item) => item.classList.toggle("active", item === button));
+      document.querySelectorAll(".section").forEach((item) => item.classList.toggle("active", item.id === `page-${page}`));
+      if (page === "admins") loadAdmins();
+      if (page === "download-perms") loadDownloadStatus();
+      if (page === "download-queue") loadDownloadQueue();
+      if (page === "download-help") loadHelp();
+      if (page === "approvals") loadApprovals("pending");
+      if (page === "groups") loadMonitor("group");
+      if (page === "friends") loadMonitor("private");
+    });
+    async function loadStatus() { try { const data = await api("/api/status"); $("services").innerHTML = Object.entries(data.services).map(([name, value]) => `<div class="item"><div>${escapeHtml(name)}<small>${escapeHtml(value.detail || "")}</small></div><span class="status ${value.healthy ? "ok" : "bad"}">${value.healthy ? "在线" : "离线"}</span></div>`).join("") || "<p class='muted'>暂无服务心跳</p>"; } catch (error) { note(error.message); } }
+    $("refresh-status").onclick = loadStatus;
+    setInterval(() => { if (!$("app").hidden) loadStatus(); }, 15000);
+    async function loadGlobalPolicy() { const value = await api("/api/policies/global"); $("global-download").checked = value.download; }
+    $("save-global").onclick = async () => { try { await api("/api/policies/global/download", { method: "PATCH", body: JSON.stringify({ enabled: $("global-download").checked }) }); note("全局开关已保存"); } catch (error) { note(error.message); } };
+    async function loadApprovals(status) { try { const rows = await api(`/api/approvals?status=${status}`); $("approval-list").replaceChildren(); rows.forEach((row) => { const div = document.createElement("div"); div.className = "item"; const summary = document.createElement("div"); summary.textContent = `${row.kind === "friend" ? "好友" : "群邀请"} ${row.subject_id}`; const detail = document.createElement("small"); detail.textContent = row.payload.comment || `申请状态：${row.status}`; if (row.apply_state) detail.textContent += ` · NapCat：${row.apply_state}${row.apply_error ? `（${row.apply_error}）` : ""}`; if (row.outcome_unknown) detail.textContent += " · 结果未知，必须先人工核对"; summary.append(detail); div.append(summary); if (status === "pending" || row.outcome_unknown) { const actions = document.createElement("div"); actions.className = "row"; for (const [label, decision] of [["通过", "approved"], ["拒绝", "rejected"]]) { const button = document.createElement("button"); button.textContent = label; button.disabled = status !== "pending"; button.onclick = async () => { try { await api(`/api/approvals/${row.kind}/${encodeURIComponent(row.subject_id)}/${decision}`, { method: "POST" }); note("已排入 NapCat 审批队列"); await loadApprovals(status); } catch (error) { note(error.message); } }; actions.append(button); } if (row.outcome_unknown && row.action_id) { for (const [label, enabled] of [["确认已应用", true], ["确认未应用并重试", false]]) { const button = document.createElement("button"); button.textContent = label; button.onclick = async () => { try { await api(`/api/approvals/actions/${row.action_id}/reconcile`, { method: "POST", body: JSON.stringify({ enabled }) }); note(enabled ? "已标记 NapCat 已应用" : "已允许后台重试"); await loadApprovals(status); } catch (error) { note(error.message); } }; actions.append(button); } } div.append(actions); } $("approval-list").append(div); }); if (!rows.length) $("approval-list").textContent = "没有申请记录"; } catch (error) { note(error.message); } }
+    document.querySelectorAll("[data-approval]").forEach((button) => button.onclick = () => loadApprovals(button.dataset.approval));
+    async function loadHelp() { try { $("help-text").value = (await api("/api/help/jm")).content; } catch (error) { note(error.message); } }
+    $("save-help").onclick = async () => { try { await api("/api/help/jm", { method: "PUT", body: JSON.stringify({ content: $("help-text").value }) }); note("帮助文本已保存"); } catch (error) { note(error.message); } };
+    async function loadDownloadStatus() {
+      try {
+        const [rows, roster] = await Promise.all([api("/api/download/scopes"), loadRoster()]);
+        const names = new Map();
+        for (const group of roster.groups || []) names.set(`group:${group.group_id}`, group.group_remark || group.group_name || "");
+        for (const friend of roster.friends || []) names.set(`private:${friend.user_id}`, friend.remark || friend.nickname || "");
+        const kindFilter = $("download-kind-filter").value;
+        const search = $("download-search").value.trim();
+        const visible = rows.filter((scope) => {
+          const [kind, owner] = String(scope.scope_key).split(":");
+          if (kindFilter && kind !== kindFilter) return false;
+          if (!search) return true;
+          return owner.includes(search) || String(names.get(scope.scope_key) || "").includes(search);
+        });
+        $("download-status").replaceChildren();
+        visible.forEach((scope) => {
+          const [kind, owner] = String(scope.scope_key).split(":");
+          const row = document.createElement("div"); row.className = "item";
+          const label = document.createElement("div");
+          label.textContent = scopeLabel(kind, owner, names.get(scope.scope_key) || "", "");
+          const controls = document.createElement("div"); controls.className = "row";
+          for (const [key, title] of [["download_enabled", "下载"], ["download_blacklisted", "下载黑名单"]]) {
+            const button = document.createElement("button");
+            button.textContent = `${title}${scope[key] ? "：开" : "：关"}`;
+            button.onclick = async () => {
+              try {
+                await api(`/api/scopes/${kind}/${owner}/policy`, { method: "PATCH", body: JSON.stringify({ [key]: !scope[key] }) });
+                await loadDownloadStatus();
+              } catch (error) { note(error.message); }
+            };
+            controls.append(button);
+          }
+          row.append(label, controls);
+          $("download-status").append(row);
+        });
+        if (!visible.length) $("download-status").textContent = rows.length ? "没有匹配的会话" : "尚未配置会话权限";
+      } catch (error) { note(error.message); }
+    }
+    const QUEUE_STAGE = { queued: "排队", downloading: "下载中", packaging: "打包中", uploading: "上传中" };
+    function queueTime(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? (value || "-") : date.toLocaleString("zh-CN", { hour12: false }); }
+    function queueProgress(job) {
+      if (job.status === "pending") return "正在排队";
+      if (job.status === "processing") {
+        const stage = QUEUE_STAGE[job.stage] || job.stage || "";
+        const count = Number(job.progress_total) > 0 ? ` ${job.progress_current}/${job.progress_total}` : "";
+        return `正在下载${stage || count ? `（${stage}${count}）` : ""}`;
+      }
+      if (job.status === "done") return "已完成";
+      if (job.status === "failed") return `失败${job.error ? `：${job.error}` : ""}`;
+      return job.status;
+    }
+    async function waitControlAction(actionId) {
+      for (let attempt = 0; attempt < 14; attempt += 1) {
+        const actions = await api("/api/download/actions");
+        const found = actions.find((item) => item.id === actionId);
+        if (found && found.status !== "pending" && found.status !== "processing") return found;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+      return null;
+    }
+    async function loadDownloadQueue() {
+      try {
+        const [rows, actions] = await Promise.all([api("/api/download/queue"), api("/api/download/actions")]);
+        const counts = rows.reduce((acc, job) => { acc[job.status] = (acc[job.status] || 0) + 1; return acc; }, {});
+        const summary = document.createElement("div");
+        summary.className = "muted";
+        summary.textContent = `排队 ${counts.pending || 0} · 下载中 ${counts.processing || 0} · 已完成 ${counts.done || 0} · 失败 ${counts.failed || 0}`;
+        $("download-queue").replaceChildren(summary);
+        const showFinished = Boolean($("show-finished").checked);
+        const visible = rows.filter((job) => showFinished || !["done", "canceled"].includes(job.status));
+        visible.forEach((job) => {
+          const row = document.createElement("div");
+          row.className = "item";
+          const text = document.createElement("div");
+          const target = job.destination_type === "group" ? `群 ${job.group_id}` : `私聊 ${job.user_id}`;
+          text.textContent = `${queueTime(job.created_at)} · ${target} · JM${job.album_id} · ${queueProgress(job)}`;
+          row.append(text);
+          if (["pending", "processing"].includes(job.status)) {
+            const controls = document.createElement("div");
+            controls.className = "row";
+            const cancel = document.createElement("button");
+            cancel.textContent = "取消";
+            cancel.onclick = async () => {
+              try {
+                const result = await api(`/api/download/queue/${job.id}/cancel`, { method: "POST" });
+                const action = await waitControlAction(result.action_id);
+                note(action?.result?.changed ? "已取消该任务" : action?.result?.changed === false ? "任务已在处理中或已结束，未能取消" : "取消操作已提交");
+                await loadDownloadQueue();
+              } catch (error) { note(error.message); }
+            };
+            controls.append(cancel);
+            if (job.status === "pending") {
+              const priority = document.createElement("button");
+              priority.textContent = "插队";
+              priority.onclick = async () => {
+                try {
+                  const result = await api(`/api/download/queue/${job.id}/priority`, { method: "POST" });
+                  await waitControlAction(result.action_id);
+                  note("已插队到队列最前");
+                  await loadDownloadQueue();
+                } catch (error) { note(error.message); }
+              };
+              controls.append(priority);
+            }
+            row.append(controls);
+          } else if (job.status === "failed") {
+            const remove = document.createElement("button");
+            remove.className = "danger";
+            remove.textContent = "删除失败记录";
+            remove.onclick = async () => {
+              if (!confirm(`删除任务 #${job.id} 的失败记录？`)) return;
+              try {
+                const result = await api(`/api/download/queue/${job.id}/failed`, { method: "DELETE" });
+                const action = await waitControlAction(result.action_id);
+                note(action?.result?.deleted ? "失败记录已删除" : "删除操作已提交");
+                await loadDownloadQueue();
+              } catch (error) { note(error.message); }
+            };
+            row.append(remove);
+          }
+          $("download-queue").append(row);
+        });
+        if (!visible.length) {
+          const hidden = rows.length - visible.length;
+          $("download-queue").append(Object.assign(document.createElement("div"), { className: "muted", textContent: hidden > 0 ? `没有进行中的任务（已完成 ${hidden} 条已隐藏，勾选「显示已完成」可查看）` : "队列为空" }));
+        }
+        const pendingActions = actions.filter((item) => item.status !== "done");
+        $("queue-actions").textContent = pendingActions.slice(0, 5).map((item) => `操作 #${item.id}：${item.status === "pending" ? "待执行" : item.status === "processing" ? "执行中" : item.status === "failed" ? "失败" : item.status}${item.error ? `（${item.error}）` : ""}`).join("　");
+      } catch (error) { note(error.message); }
+    }
+    $("refresh-queue").onclick = loadDownloadQueue;
+    $("show-finished").onchange = loadDownloadQueue;
+    $("clear-finished").onclick = async () => {
+      if (!confirm("删除所有已完成/已取消的队列记录？正在排队和下载中的任务不受影响。")) return;
+      try {
+        const result = await api("/api/download/queue/clear-finished", { method: "POST" });
+        const action = await waitControlAction(result.action_id);
+        const deleted = action?.result?.deleted;
+        note(deleted === undefined ? "清空已完成操作已提交" : `已删除 ${deleted} 条已完成记录`);
+        await loadDownloadQueue();
+      } catch (error) { note(error.message); }
+    };
+    $("clear-queue").onclick = async () => {
+      if (!confirm("清空所有待处理下载任务？正在处理的任务不会被终止。")) return;
+      try {
+        const rows = await api("/api/download/queue");
+        const pending = rows.filter((job) => job.status === "pending").length;
+        const result = await api("/api/download/queue/clear", { method: "POST" });
+        const action = await waitControlAction(result.action_id);
+        const canceled = action?.result?.canceled;
+        note(canceled === undefined ? "清空操作已提交" : canceled > 0 ? `已清空 ${canceled} 个排队任务` : (pending > 0 ? "清空操作未生效，请稍后重试" : "当前没有排队中的任务"));
+        await loadDownloadQueue();
+      } catch (error) { note(error.message); }
+    };
+    $("download-kind-filter").onchange = loadDownloadStatus;
+    $("download-search").oninput = loadDownloadStatus;
+    $("add-download-scope").onclick = async () => { try { await api(`/api/scopes/${$("download-kind").value}/${$("download-owner").value}/policy`, { method: "PATCH", body: JSON.stringify({ download_enabled: false }) }); await loadDownloadStatus(); note("会话已添加，当前权限关闭"); } catch (error) { note(error.message); } };
+    async function loadMonitor(kind, force = false) {
+      try {
+        if (force) { rosterCache = null; }
+        const roster = await loadRoster();
+        const isGroup = kind === "group";
+        const search = $(isGroup ? "monitor-group-search" : "monitor-friend-search").value.trim();
+        const rows = (isGroup ? roster.groups : roster.friends) || [];
+        const visible = rows.filter((row) => {
+          if (!search) return true;
+          const id = String(isGroup ? row.group_id : row.user_id);
+          const name = String(isGroup ? row.group_name : row.nickname) || "";
+          const remark = String(isGroup ? row.group_remark : row.remark) || "";
+          return id.includes(search) || name.includes(search) || remark.includes(search);
+        });
+        const box = $(isGroup ? "monitor-group-list" : "monitor-friend-list");
+        box.replaceChildren();
+        if (!visible.length) { box.textContent = rows.length ? "没有匹配的会话" : "列表为空（确认机器人已登录）"; return; }
+        visible.forEach((row) => {
+          const id = Number(isGroup ? row.group_id : row.user_id);
+          const name = String((isGroup ? row.group_name : row.nickname) || "");
+          const remark = String((isGroup ? row.group_remark : row.remark) || "");
+          const item = document.createElement("div"); item.className = "item";
+          const label = document.createElement("div");
+          label.textContent = isGroup ? `群 ${name}（${id}）` : `QQ ${name}（${id}）`;
+          if (isGroup && row.member_count) label.textContent += ` · ${row.member_count} 人`;
+          const controls = document.createElement("div"); controls.className = "row";
+          const input = document.createElement("input");
+          input.value = remark;
+          input.placeholder = isGroup ? "群备注" : "好友备注";
+          input.maxLength = 60;
+          input.style.maxWidth = "240px";
+          const save = document.createElement("button"); save.textContent = "保存备注";
+          save.onclick = async () => {
+            save.disabled = true;
+            try {
+              await api(`/api/roster/${isGroup ? "group" : "friend"}/${id}/remark`, { method: "POST", body: JSON.stringify({ remark: input.value }) });
+              rosterCache = null;
+              note("备注已更新");
+              await loadMonitor(kind);
+            } catch (error) { note(error.message); }
+            finally { save.disabled = false; }
+          };
+          controls.append(input, save);
+          item.append(label, controls);
+          box.append(item);
+        });
+      } catch (error) { note(error.message); }
+    }
+    $("refresh-groups").onclick = () => loadMonitor("group", true);
+    $("refresh-friends").onclick = () => loadMonitor("private", true);
+    $("monitor-group-search").oninput = () => loadMonitor("group");
+    $("monitor-friend-search").oninput = () => loadMonitor("private");
+    let rosterCache = null, rosterCacheAt = 0;
+    async function loadRoster(force = false) {
+      if (!force && rosterCache && Date.now() - rosterCacheAt < 60000) return rosterCache;
+      try { rosterCache = await api("/api/roster"); rosterCacheAt = Date.now(); }
+      catch (error) { rosterCache = { friends: [], groups: [] }; }
+      return rosterCache;
+    }
+    function scopeLabel(kind, owner, name, remark) {
+      const title = String(remark || name || "").trim();
+      return `${kind === "group" ? "群聊" : "私聊"} ${title ? title + " " : ""}（${owner}）`;
+    }
+    function scopeSort(a, b) {
+      if (a.kind !== b.kind) return a.kind === "group" ? -1 : 1;
+      return String(a.remark || a.name || a.owner).localeCompare(String(b.remark || b.name || b.owner), "zh-CN");
+    }
+    async function loadAdmins() { try { const rows = await api("/api/admins"); $("admin-list").textContent = rows.map((row) => `QQ ${row.qq_id}${row.is_super ? "（超级管理员）" : ""}${row.enabled ? "" : "（已停用）"}`).join("\n"); } catch (error) { note(error.message); } }
+    $("add-admin").onclick = async () => { try { await api("/api/admins", { method: "POST", body: JSON.stringify({ qq_id: Number($("new-admin-qq").value), password: $("new-admin-password").value }) }); $("new-admin-password").value = ""; note("管理员已添加"); await loadAdmins(); } catch (error) { note(error.message); } };
+    function escapeHtml(value) { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]); }
+    const helpPanel = document.createElement("div"); helpPanel.innerHTML = '<button id="preview-help">预览帮助</button><button id="load-help-history">读取历史版本</button><pre id="help-preview"></pre><div id="help-history"></div>'; $("help-text").parentElement.after(helpPanel);
+    $("preview-help").onclick = () => { $("help-preview").textContent = $("help-text").value; };
+    $("load-help-history").onclick = async () => { try { const rows = await api("/api/help/jm/versions"); $("help-history").replaceChildren(); for (const row of rows) { const button = document.createElement("button"); button.textContent = `恢复版本 ${row.version || row.id}`; button.onclick = async () => { try { await api(`/api/help/jm/restore/${row.version || row.id}`, { method: "POST" }); await loadHelp(); note("帮助版本已恢复"); } catch (error) { note(error.message); } }; $("help-history").append(button); } } catch (error) { note(error.message); } };
+    $('login-qr-state').textContent = '';
+    const qrState = document.createElement('p'); qrState.className = 'muted';
+    const qrDetail = document.createElement('pre'); qrDetail.hidden = true;
+    const qrImage = document.createElement('img'); qrImage.alt = 'NapCat 登录二维码'; qrImage.hidden = true; qrImage.width = 240;
+    async function loadQr(fetchNew=false) {
+      try {
+        const data = await api('/api/napcat/login' + (fetchNew ? '/refresh' : ''), fetchNew ? {method:'POST'} : {});
+        qrState.textContent = data.message || '登录状态未知';
+        qrDetail.textContent = JSON.stringify(data, null, 2);
+        const showQr = !data.isLogin && Boolean(data.qrcodeurl);
+        qrImage.hidden = !showQr;
+        if (showQr) qrImage.src = '/api/napcat/login/qr?t=' + Date.now();
+      } catch (error) { qrState.textContent = error.message; qrImage.hidden = true; }
+    }
+    const qrFetch = document.createElement('button'); qrFetch.className = 'primary'; qrFetch.textContent = '获取二维码'; qrFetch.onclick = () => loadQr(true);
+    const qrReload = document.createElement('button'); qrReload.textContent = '刷新状态'; qrReload.onclick = () => loadQr(false);
+    const qrToggle = document.createElement('button'); qrToggle.textContent = '技术详情'; qrToggle.onclick = () => { qrDetail.hidden = !qrDetail.hidden; };
+    $('login-qr-state').append(qrFetch, qrReload, qrToggle, qrState, qrDetail, qrImage);
+    loadAdmins = async () => { try { const rows=await api('/api/admins'); $('admin-list').replaceChildren(); for(const row of rows) { const item=document.createElement('div'); item.className='item'; const text=document.createElement('span'); text.textContent='QQ ' + row.qq_id + (row.is_super ? '（超级管理员）' : ''); item.append(text); const actions=document.createElement('div'); const reset=document.createElement('button'); reset.textContent='重置密码'; reset.onclick=()=>{ $('new-admin-qq').value=row.qq_id; $('new-admin-password').focus(); note('输入新后台密码后保存'); }; actions.append(reset); if(!row.is_super) { const remove=document.createElement('button'); remove.textContent='删除管理员'; remove.onclick=async()=>{ if(!confirm('删除管理员 ' + row.qq_id + '？'))return; try{await api('/api/admins/' + row.qq_id,{method:'DELETE'});await loadAdmins();}catch(error){note(error.message);} }; actions.append(remove); } item.append(actions); $('admin-list').append(item); } }catch(error){note(error.message);} }; $('add-admin').textContent='保存管理员及密码';
+    enterApp().catch(() => showLogin());
+  </script>
+</body>
+</html>
