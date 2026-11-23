@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "github.x1a0he1.maibot-jm-bot",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "name": "JM-bot 漫画工具",
   "description": "在 QQ 使用 JM-bot 搜索、收藏、预览和管理漫画下载队列",
   "author": {

@@ -9,6 +9,7 @@ from typing import Any, Callable, Protocol
 
 import jmcomic
 
+from jmbot.core.catalog_service import AlbumDetail, album_detail_from_entity
 from jmbot.core.pdf_builder import build_pdf, build_split_pdfs, collect_images
 from jmbot.core.zip_builder import build_zip
 
@@ -68,6 +69,7 @@ class DownloadResult:
     album_id: str
     album_dir: Path
     option_path: Path
+    detail: AlbumDetail | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +80,8 @@ class AlbumJobResult:
     album_dir: Path
     pdf_path: Path
     pdf_paths: tuple[Path, ...] = ()
+    detail: AlbumDetail | None = None
+    image_count: int | None = None
 
     @property
     def output_paths(self) -> tuple[Path, ...]:
@@ -170,6 +174,7 @@ def download_comic(
         )
     else:
         raw_download_result = _call_download_api_without_exception_check(download_album, album_id, option)
+        album = raw_download_result[0] if isinstance(raw_download_result, tuple) and raw_download_result else None
 
     images = collect_images(album_dir)
     if not images:
@@ -179,7 +184,8 @@ def download_comic(
     if expected_total is not None and len(images) < expected_total:
         raise RuntimeError(f"JM{album_id} 下载不完整：已下载 {len(images)} / {expected_total} 张图片")
 
-    return DownloadResult(album_id=album_id, album_dir=album_dir, option_path=option_path)
+    detail = album_detail_from_entity(album_id, album) if album is not None else None
+    return DownloadResult(album_id=album_id, album_dir=album_dir, option_path=option_path, detail=detail)
 
 
 def create_pdf_for_album(
@@ -241,6 +247,7 @@ def run_album_job(
     album_id = normalized.album_id
     base_name = _output_base_name(normalized)
     output_dir = Path(output_root)
+    album_dir = download_directory_for_request(download_settings, normalized)
     cached_parts = (
         _cached_split_pdfs(output_dir, base_name)
         if normalized.output_format == "pdf" and download_settings.auto_split_pdf
@@ -249,17 +256,19 @@ def run_album_job(
     if cached_parts:
         return AlbumJobResult(
             album_id=album_id,
-            album_dir=download_settings.download_root / _request_directory_name(normalized),
+            album_dir=album_dir,
             pdf_path=cached_parts[0],
             pdf_paths=cached_parts,
+            image_count=len(collect_images(album_dir)) or None,
         )
 
     cached_output = output_dir / f"{base_name}.{normalized.output_format}"
     if cached_output.exists() and cached_output.is_file():
         return AlbumJobResult(
             album_id=album_id,
-            album_dir=download_settings.download_root / _request_directory_name(normalized),
+            album_dir=album_dir,
             pdf_path=cached_output,
+            image_count=len(collect_images(album_dir)) or None,
         )
 
     download_result = download_comic(
@@ -293,6 +302,8 @@ def run_album_job(
         album_dir=download_result.album_dir,
         pdf_path=output_paths[0],
         pdf_paths=output_paths,
+        detail=download_result.detail,
+        image_count=len(images),
     )
 
 

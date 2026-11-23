@@ -10,6 +10,7 @@ from jmbot.core.catalog_service import (
     RankingResult,
     SearchResult,
 )
+from jmbot.core.jm_service import AlbumJobResult
 from jmbot.core.persistent_queue import AlbumQueueJob
 from jmbot.core.user_store import FavoriteItem
 
@@ -278,16 +279,27 @@ def format_queue_summary(active_jobs: Sequence[AlbumQueueJob], *, limit: int = 1
     return "\n".join(lines)
 
 
-def format_task_started(album_id: str) -> str:
-    """Return the message sent when a job starts."""
-
-    return f"开始处理 JM{album_id}。"
-
-
-def format_task_uploaded(album_id: str, filename: str) -> str:
+def format_task_uploaded(job: AlbumQueueJob, result: AlbumJobResult) -> str:
     """Return the message sent after a successful upload."""
 
-    return f"JM{album_id} 已上传：{filename}"
+    detail = result.detail
+    title = " ".join(detail.title.split()) if detail else ""
+    label = f"JM{job.album_id}"
+    if title and title != "未知":
+        label = f"{label} · {title}"
+    lines = ["✅ 下载完成，文件已发送", f"📖 {label}"]
+    if detail and detail.authors:
+        authors = "、".join(" ".join(author.split()) for author in detail.authors)
+        lines.append(f"✍️ 作者：{authors}")
+    chapter_count = len(job.chapters) or (len(detail.chapters) if detail else 0)
+    if chapter_count:
+        lines.append(f"📚 章节：{chapter_count}")
+    if result.image_count is not None:
+        lines.append(f"🖼️ 图片：{result.image_count} 张")
+    format_label = "ZIP 压缩包" if job.output_format == "zip" else "PDF 文档"
+    files = f"（共 {len(result.output_paths)} 个文件）" if len(result.output_paths) > 1 else ""
+    lines.append(f"📦 格式：{format_label}{files}")
+    return "\n".join(lines)
 
 
 def format_task_canceled(album_id: str) -> str:

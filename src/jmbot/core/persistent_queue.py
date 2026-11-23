@@ -161,6 +161,7 @@ class PersistentAlbumQueue:
                 """
                 UPDATE album_queue
                 SET status = 'done',
+                    stage = 'done',
                     error = NULL,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE id = ?

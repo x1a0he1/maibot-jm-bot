@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 import asyncio
 import os
 import time
@@ -757,6 +758,7 @@ async def _drain_album_queue(bot: Bot) -> None:
             ),
             upload_private=lambda user_id, pdf_path: upload_private_pdf(bot, user_id, pdf_path),
             notify=lambda job, message: _notify_job(bot, job, message),
+            notify_uploaded=lambda job, message: _notify_job_with_cover(bot, job, message),
             cleanup=_cleanup_job_files if CONFIG.clean_after_upload else None,
             is_canceled=_job_canceled,
         )
@@ -800,7 +802,33 @@ async def _run_queued_album_job(job: AlbumQueueJob):
     return await task
 
 
-async def _notify_job(bot: Bot, job: AlbumQueueJob, message: str) -> None:
+async def _notify_job_with_cover(bot: Bot, job: AlbumQueueJob, message: str) -> None:
+    if _job_canceled(job.id):
+        return
+
+    with ExitStack() as stack:
+        try:
+            CONFIG.preview_root.mkdir(parents=True, exist_ok=True)
+            media_root = stack.enter_context(tempfile.TemporaryDirectory(
+                prefix="completed-", dir=CONFIG.preview_root, ignore_cleanup_errors=True,
+            ))
+            async with QUERY_SEMAPHORE:
+                cover = await asyncio.to_thread(
+                    query_cover, job.album_id, media_root,
+                    timeout_seconds=min(CONFIG.query_timeout_seconds, 8),
+                )
+            cover_uri = cover.cover_path.resolve(strict=True).as_uri()
+        except Exception as exc:
+            logger.warning("JM{} 完成回执的封面获取失败：{!r}", job.album_id, exc)
+            await _notify_job(bot, job, message)
+        else:
+            await _notify_job(bot, job, [
+                {"type": "text", "data": {"text": f"{message}\n"}},
+                {"type": "image", "data": {"file": cover_uri}},
+            ])
+
+
+async def _notify_job(bot: Bot, job: AlbumQueueJob, message: str | list[dict]) -> None:
     if _job_canceled(job.id):
         return
     if job.destination_type == "group":

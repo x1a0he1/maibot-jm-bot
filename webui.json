@@ -1,0 +1,178 @@
+{
+  "schema_version": 2,
+  "required_capabilities": [
+    "custom_pages"
+  ],
+  "pages": [
+    {
+      "id": "admin",
+      "title": "JM-bot 管理",
+      "icon": "list",
+      "placement": "sidebar",
+      "mode": "custom",
+      "entry": "webui/admin.html",
+      "layout": "document",
+      "description": "下载队列、进度和会话权限",
+      "queries": {
+        "overview": {
+          "api": "webui_overview",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            },
+            "include_names": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "actions": {
+        "login": {
+          "api": "webui_login",
+          "parameters": {
+            "qq_id": {
+              "type": "string",
+              "required": true,
+              "max_length": 20
+            },
+            "password": {
+              "type": "string",
+              "required": true,
+              "max_length": 1024
+            }
+          }
+        },
+        "logout": {
+          "api": "webui_logout",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            }
+          }
+        },
+        "scope": {
+          "api": "webui_scope",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            },
+            "kind": {
+              "type": "string",
+              "required": true,
+              "choices": [
+                "group",
+                "private"
+              ]
+            },
+            "owner_id": {
+              "type": "string",
+              "required": true,
+              "max_length": 20
+            },
+            "field": {
+              "type": "string",
+              "required": true,
+              "choices": [
+                "download_enabled",
+                "download_blacklisted"
+              ]
+            },
+            "enabled": {
+              "type": "boolean",
+              "required": true
+            }
+          }
+        },
+        "global": {
+          "api": "webui_global",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            },
+            "enabled": {
+              "type": "boolean",
+              "required": true
+            }
+          },
+          "confirmation": "确认更改所有会话的下载总开关？"
+        },
+        "prioritize": {
+          "api": "webui_queue_action",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            },
+            "operation": {
+              "type": "string",
+              "required": true,
+              "choices": [
+                "priority"
+              ]
+            },
+            "job_id": {
+              "type": "integer",
+              "required": true,
+              "minimum": 1
+            }
+          }
+        },
+        "cancel": {
+          "api": "webui_queue_action",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            },
+            "operation": {
+              "type": "string",
+              "required": true,
+              "choices": [
+                "cancel"
+              ]
+            },
+            "job_id": {
+              "type": "integer",
+              "required": true,
+              "minimum": 1
+            }
+          },
+          "confirmation": "确认取消这条下载任务？"
+        },
+        "delete_failed": {
+          "api": "webui_queue_action",
+          "parameters": {
+            "session": {
+              "type": "string",
+              "required": true,
+              "max_length": 96
+            },
+            "operation": {
+              "type": "string",
+              "required": true,
+              "choices": [
+                "delete_failed"
+              ]
+            },
+            "job_id": {
+              "type": "integer",
+              "required": true,
+              "minimum": 1
+            }
+          },
+          "confirmation": "确认删除这条失败记录？"
+        }
+      }
+    }
+  ]
+}

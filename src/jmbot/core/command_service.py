@@ -97,16 +97,24 @@ def enqueue_album_request(
 ) -> str:
     """Enqueue a normal album request and return a user-facing reply."""
 
+    label = f"JM{album_id}"
+    if output_format != "pdf" or chapters:
+        options = [output_format.upper()]
+        if chapters:
+            options.append(f"章节 {','.join(map(str, chapters))}")
+        label += f"（{'，'.join(options)}）"
+
     try:
         job = _enqueue(queue, album_id, target, output_format=output_format, chapters=chapters)
     except DuplicateAlbumJobError as exc:
-        ahead_count = queue.count_ahead(exc.existing_job.id)
-        return f"JM{album_id} 已经在队列中，前面还有{ahead_count}篇漫画正在处理。"
+        if exc.existing_job.status == "processing":
+            return f"⌛ {label} 正在处理，请稍候…"
+        return f"⌛ {label} 已经在队列中，请稍候…"
 
     ahead_count = queue.count_ahead(job.id)
-    format_label = output_format.upper()
-    chapter_label = f"，章节 {','.join(map(str, chapters))}" if chapters else ""
-    return f"收到 JM{album_id}（{format_label}{chapter_label}），已加入队列，前面还有{ahead_count}篇漫画正在处理。"
+    if ahead_count:
+        return f"⌛ {label} 已排队，前面还有 {ahead_count} 个任务。"
+    return f"⌛ 开始下载 {label}，请稍候…"
 
 
 def favorite_album(

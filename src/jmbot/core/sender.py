@@ -10,38 +10,17 @@ class ApiBot(Protocol):
     async def call_api(self, action: str, **params: Any) -> Any: ...
 
 
-async def ensure_group_folder(bot: ApiBot, group_id: int, folder_name: str) -> str:
-    """Ensure the target QQ group file folder exists and return its ID."""
-
-    existing = await _find_group_folder(bot, group_id, folder_name)
-    if existing is not None:
-        return existing
-
-    await bot.call_api(
-        "create_group_file_folder",
-        group_id=group_id,
-        name=folder_name,
-        parent_id="/",
-    )
-
-    created = await _find_group_folder(bot, group_id, folder_name)
-    if created is None:
-        raise RuntimeError(f"创建群文件夹失败，或无法读取文件夹 ID：{folder_name}")
-
-    return created
-
-
 async def upload_group_pdf(bot: ApiBot, group_id: int, file_path: str | Path, folder_name: str) -> None:
-    """Upload the generated PDF to a QQ group file folder."""
+    """Upload a QQ group file to the named folder if present, or to the root."""
 
     path = Path(file_path)
-    folder_id = await ensure_group_folder(bot, group_id, folder_name)
+    folder_id = await _find_group_folder(bot, group_id, folder_name)
     await bot.call_api(
         "upload_group_file",
         group_id=group_id,
         file=path.resolve().as_uri(),
         name=path.name,
-        folder=folder_id,
+        folder=folder_id or "/",
     )
 
 

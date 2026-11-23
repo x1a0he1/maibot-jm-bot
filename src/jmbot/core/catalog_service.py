@@ -126,6 +126,10 @@ def create_catalog_client() -> CatalogClient:
 
 def get_album_detail(album_id: str, *, client: CatalogClient | None = None) -> AlbumDetail:
     entity = (client or create_catalog_client()).get_album_detail(album_id)
+    return album_detail_from_entity(album_id, entity)
+
+
+def album_detail_from_entity(album_id: str, entity: Any) -> AlbumDetail:
     return AlbumDetail(
         album_id=str(getattr(entity, "album_id", album_id)),
         title=_text_or_unknown(getattr(entity, "name", None)),

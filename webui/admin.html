@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JM-bot 管理</title>
+  <style>
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    main { max-width: 1420px; margin: auto; padding: clamp(14px, 2.4vw, 32px); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 1.45rem; }
+    h2 { font-size: 1.05rem; }
+    button, input, select { font: inherit; }
+    button:disabled { opacity: .55; cursor: default; }
+    .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .spread { justify-content: space-between; }
+    .stack { display: grid; gap: 15px; }
+    .login { max-width: 440px; }
+    .login form, .login label { display: grid; gap: 7px; }
+    .login form { gap: 14px; }
+    .login button { justify-self: start; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat { display: grid; gap: 6px; border-top: 3px solid var(--maibot-border); }
+    .stat:last-child { border-top-color: var(--maibot-danger); }
+    .stat .count { font-size: 1.65rem; font-weight: 700; }
+    .service[data-state="connected"] { border-color: var(--maibot-primary); }
+    .service[data-state="offline"], .error { color: var(--maibot-danger); }
+    .top { margin-bottom: 18px; }
+    .panel { display: grid; gap: 14px; }
+    .table-frame { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 9px 8px; vertical-align: middle; }
+    td { overflow-wrap: anywhere; }
+    td.note { min-width: 11rem; max-width: 26rem; }
+    td.ops { min-width: 9rem; }
+    td.ops button { min-height: 30px; }
+    td progress { display: block; width: min(8rem, 100%); margin-top: 3px; accent-color: var(--maibot-primary); }
+    .small { font-size: .83em; }
+    .notice { min-height: 1.5em; }
+    tr[data-status="failed"] .state { color: var(--maibot-danger); }
+    .add-scope label { display: grid; gap: 4px; }
+    .add-scope { align-items: end; }
+    @media (max-width: 670px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      th, td { padding: 8px 6px; }
+    }
+  </style>
+</head>
+<body class="maibot-page">
+<main>
+  <header class="top line spread">
+    <div class="line">
+      <h1>下载管理</h1>
+      <span id="service" class="maibot-badge" hidden></span>
+    </div>
+    <div id="account-actions" class="line" hidden>
+      <span id="account" class="maibot-muted small"></span>
+      <button type="button" id="refresh" class="maibot-button">刷新</button>
+      <button type="button" id="logout" class="maibot-button">退出 JM 后台</button>
+    </div>
+  </header>
+
+  <div id="notice" class="notice maibot-muted" role="status" aria-live="polite"></div>
+
+  <section id="login" class="maibot-card login stack" aria-labelledby="login-title">
+    <h2 id="login-title">登录 JM-bot</h2>
+    <form id="login-form">
+      <label>管理员 QQ
+        <input class="maibot-input" name="qq" autocomplete="username" inputmode="numeric" required maxlength="19">
+      </label>
+      <label>JM 后台密码
+        <input class="maibot-input" name="password" autocomplete="current-password" type="password" required maxlength="1024">
+      </label>
+      <button class="maibot-button maibot-button-primary" type="submit" disabled>登录</button>
+    </form>
+    <p class="maibot-muted small">首次密码位于 JM-bot 数据目录的 admin-first-login.txt。</p>
+  </section>
+
+  <div id="workspace" class="stack" hidden>
+    <section class="stats" aria-label="最近下载任务统计">
+      <div class="maibot-card stat"><span>待处理</span><strong id="count-pending" class="maibot-number count"></strong></div>
+      <div class="maibot-card stat"><span>处理中</span><strong id="count-processing" class="maibot-number count"></strong></div>
+      <div class="maibot-card stat"><span>已完成</span><strong id="count-done" class="maibot-number count"></strong></div>
+      <div class="maibot-card stat"><span>失败</span><strong id="count-failed" class="maibot-number count"></strong></div>
+    </section>
+
+    <nav class="line" aria-label="管理视图">
+      <button type="button" class="maibot-button" data-panel="queue" aria-pressed="true">下载队列</button>
+      <button type="button" class="maibot-button" data-panel="permissions" aria-pressed="false">会话权限</button>
+    </nav>
+
+    <section id="queue" class="maibot-card panel">
+      <header class="line spread">
+        <h2>下载队列 <span class="maibot-muted small">最近 200 条</span></h2>
+        <label class="line">状态
+          <select id="queue-filter" class="maibot-select">
+            <option value="all">全部</option><option value="active">待处理 / 处理中</option>
+            <option value="done">已完成</option><option value="failed">失败</option><option value="canceled">已取消</option>
+          </select>
+        </label>
+      </header>
+      <div class="table-frame">
+        <table class="maibot-table">
+          <thead><tr><th>作品编号</th><th>会话</th><th>状态</th><th>更新</th><th>操作</th></tr></thead>
+          <tbody id="queue-body"></tbody>
+        </table>
+        <p id="queue-empty" class="maibot-muted" hidden>没有符合筛选条件的下载任务。</p>
+      </div>
+    </section>
+
+    <section id="permissions" class="maibot-card panel" hidden>
+      <header class="line spread">
+        <h2>会话下载权限</h2>
+        <button type="button" id="global" class="maibot-button"></button>
+      </header>
+      <form id="scope-form" class="line add-scope">
+        <label>会话类型
+          <select class="maibot-select" name="kind">
+            <option value="group">QQ群</option><option value="private">好友私聊</option>
+          </select>
+        </label>
+        <label>群号或 QQ 号
+          <input class="maibot-input" name="owner" inputmode="numeric" pattern="[0-9]+" maxlength="19" required>
+        </label>
+        <button class="maibot-button maibot-button-primary" type="submit">授权下载</button>
+      </form>
+      <div class="line spread">
+        <label class="line">筛选会话 <input id="scope-filter" type="search" class="maibot-input" placeholder="名称或号码"></label>
+        <span id="scope-limit" class="maibot-muted small" hidden></span>
+      </div>
+      <div class="table-frame">
+        <table class="maibot-table">
+          <thead><tr><th>会话</th><th>下载权限</th><th>黑名单</th></tr></thead>
+          <tbody id="scope-body"></tbody>
+        </table>
+        <p id="scope-empty" class="maibot-muted" hidden>没有符合筛选条件的会话。</p>
+      </div>
+    </section>
+  </div>
+</main>
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+  const statusLabels = {pending: "待处理", processing: "处理中", done: "已完成", failed: "失败", canceled: "已取消"};
+  const stageLabels = {
+    pending: "排队", queued: "排队", downloading: "下载中", packaging: "打包中", building_pdf: "生成 PDF",
+    uploading: "上传 QQ", done: "已完成", failed: "失败", canceled: "已取消"
+  };
+  const pendingJobs = new Map();
+  const dateFormat = new Intl.DateTimeFormat("zh-CN", {month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+  function formatDate(value) {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : dateFormat.format(date);
+  }
+  let session = "";
+  let snapshot;
+  let visibleNames = {};
+  let busy = false;
+  let timer;
+
+  function notice(text = "", error = false) {
+    $("notice").textContent = text;
+    $("notice").classList.toggle("error", error);
+  }
+
+  function showWorkspace(visible) {
+    $("login").hidden = visible;
+    $("workspace").hidden = !visible;
+    $("account-actions").hidden = !visible;
+    $("service").hidden = !visible;
+    if (!visible) {
+      session = "";
+      snapshot = undefined;
+      visibleNames = {};
+      pendingJobs.clear();
+      clearTimeout(timer);
+      $("queue-body").replaceChildren();
+      $("scope-body").replaceChildren();
+      $("account").textContent = "";
+    }
+  }
+
+  function requireSuccess(result) {
+    if (!result || result.ok === false) {
+      if (result?.expired) showWorkspace(false);
+      throw new Error(result?.message || "JM 管理服务未返回结果。");
+    }
+    return result;
+  }
+
+  function targetLabel(key) {
+    const [kind, owner] = key.split(":");
+    const label = kind === "group" ? "群" : "私聊";
+    return visibleNames[key] ? visibleNames[key] + " · " + owner : label + " " + owner;
+  }
+
+  function cell(row, value, className = "") {
+    const td = row.insertCell();
+    td.textContent = value;
+    if (className) td.className = className;
+    return td;
+  }
+
+  function button(container, label, handler, disabled = false) {
+    const elem = document.createElement("button");
+    elem.type = "button";
+    elem.className = "maibot-button small";
+    elem.textContent = label;
+    elem.disabled = disabled;
+    elem.onclick = handler;
+    container.append(elem);
+    return elem;
+  }
+
+  function watchJob(result, jobId) {
+    if (result.action_id) pendingJobs.set(jobId, result.action_id);
+    return "已提交队列操作，等待下载服务确认。";
+  }
+
+  function renderQueue() {
+    if (!snapshot) return;
+    const selected = $("queue-filter").value;
+    const rows = snapshot.queue.filter((row) => selected === "all" || row.status === selected ||
+      (selected === "active" && ["pending", "processing"].includes(row.status)));
+    const body = document.createDocumentFragment();
+    for (const task of rows) {
+      const row = document.createElement("tr");
+      row.dataset.status = task.status;
+      cell(row, [task.album_id, task.format?.toUpperCase()].filter(Boolean).join(" · "), "maibot-number");
+      cell(row, targetLabel(task.target));
+      const label = [statusLabels[task.status] || task.status,
+        task.status === "processing" ? stageLabels[task.stage] : ""].filter(Boolean).join(" · ");
+      const progressCell = cell(row, label, "state note");
+      if (task.status === "processing" && task.total > 0 && task.current != null) {
+        const meter = document.createElement("progress");
+        meter.max = task.total;
+        meter.value = Math.max(0, Math.min(task.current, task.total));
+        meter.setAttribute("aria-label", "下载进度 " + meter.value + "/" + meter.max);
+        progressCell.append(meter);
+      }
+      if (task.error) {
+        const detail = document.createElement("div");
+        detail.className = "small maibot-muted";
+        detail.textContent = task.error;
+        progressCell.append(detail);
+      }
+      cell(row, formatDate(task.updated_at), "small");
+      const controls = cell(row, "", "ops");
+      const args = {job_id: task.id};
+      if (task.status === "pending") button(controls, "优先处理", () =>
+        runAction("prioritize", {...args, operation: "priority"}, (r) => watchJob(r, task.id)), pendingJobs.has(task.id));
+      if (["pending", "processing"].includes(task.status)) button(controls, "取消", () =>
+        runAction("cancel", {...args, operation: "cancel"}, (r) => watchJob(r, task.id)), pendingJobs.has(task.id));
+      if (task.status === "failed") button(controls, "删除记录", () =>
+        runAction("delete_failed", {...args, operation: "delete_failed"}, (r) => watchJob(r, task.id)), pendingJobs.has(task.id));
+      if (!controls.childElementCount) controls.textContent = "—";
+      body.append(row);
+    }
+    $("queue-body").replaceChildren(body);
+    $("queue-empty").hidden = rows.length !== 0;
+    for (const name of ["pending", "processing", "done", "failed"]) {
+      $("count-" + name).textContent = snapshot.queue.filter((item) => item.status === name).length;
+    }
+  }
+
+  function renderScopes() {
+    if (!snapshot) return;
+    const keyword = $("scope-filter").value.trim().toLowerCase();
+    const rows = snapshot.scopes.filter((item) => targetLabel(item.scope_key).toLowerCase().includes(keyword));
+    const body = document.createDocumentFragment();
+    for (const scope of rows) {
+      const row = document.createElement("tr");
+      const [kind, owner_id] = scope.scope_key.split(":");
+      cell(row, targetLabel(scope.scope_key));
+      for (const [field, labels] of [
+        ["download_enabled", ["关闭", "开启"]],
+        ["download_blacklisted", ["未拉黑", "已拉黑"]]
+      ]) {
+        const control = button(cell(row, ""), labels[Number(Boolean(scope[field]))], () =>
+          runAction("scope", {kind, owner_id, field, enabled: !scope[field]}, () => "会话权限已保存。"));
+        control.setAttribute("aria-pressed", String(Boolean(scope[field])));
+      }
+      body.append(row);
+    }
+    $("scope-body").replaceChildren(body);
+    $("scope-empty").hidden = rows.length !== 0;
+    $("scope-limit").hidden = snapshot.scope_count <= snapshot.scopes.length;
+    $("scope-limit").textContent = "显示前 " + snapshot.scopes.length + " 个会话";
+    $("global").textContent = snapshot.enabled ? "下载总开关 · 开启" : "下载总开关 · 关闭";
+    $("global").setAttribute("aria-pressed", String(snapshot.enabled));
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (session && !document.hidden) timer = setTimeout(() => refresh(), 5000);
+  }
+
+  async function refresh(includeNames = false) {
+    if (!session || busy) return;
+    busy = true;
+    $("refresh").disabled = true;
+    const active = session;
+    try {
+      const result = requireSuccess(await maibot.query("overview", {session: active, include_names: includeNames}));
+      if (session !== active) return;
+      snapshot = result;
+      if ($("notice").classList.contains("error")) notice();
+      if (snapshot.names) visibleNames = {...visibleNames, ...snapshot.names};
+      $("service").textContent = snapshot.connected ? "QQ 已连接" : "QQ 未连接";
+      $("service").dataset.state = snapshot.connected ? "connected" : "offline";
+      for (const [jobId, actionId] of pendingJobs) {
+        const action = snapshot.actions.find((row) => row.id === actionId);
+        if (action?.status === "done" || action?.status === "failed") {
+          pendingJobs.delete(jobId);
+          notice(action.status === "done" ? "队列操作已确认。" : action.error || "下载服务未能执行此操作。",
+            action.status === "failed");
+        }
+      }
+      renderQueue();
+      renderScopes();
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      busy = false;
+      $("refresh").disabled = false;
+      schedule();
+    }
+  }
+
+  async function runAction(alias, fields, after) {
+    if (busy || !session) return;
+    busy = true;
+    clearTimeout(timer);
+    try {
+      const result = requireSuccess(await maibot.action(alias, {session, ...fields}));
+      notice(after(result));
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      busy = false;
+      if (session) await refresh();
+    }
+  }
+
+  $("login-form").onsubmit = async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    busy = true;
+    const form = event.currentTarget;
+    const submit = form.querySelector("button");
+    submit.disabled = true;
+    try {
+      const result = requireSuccess(await maibot.action("login", {
+        qq_id: form.elements.qq.value.trim(), password: form.elements.password.value
+      }));
+      session = result.session;
+      form.elements.password.value = "";
+      $("account").textContent = "管理员 " + result.qq_id;
+      showWorkspace(true);
+      notice();
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      busy = false;
+      submit.disabled = false;
+      if (session) await refresh(true);
+    }
+  };
+
+  $("logout").onclick = () => runAction("logout", {}, () => {
+    showWorkspace(false);
+    return "已退出 JM 后台。";
+  });
+  $("refresh").onclick = () => refresh(true);
+  $("queue-filter").onchange = renderQueue;
+  $("scope-filter").oninput = renderScopes;
+  $("global").onclick = () => runAction("global", {enabled: !snapshot.enabled}, () => "下载总开关已保存。");
+  $("scope-form").onsubmit = (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
+    runAction("scope", {
+      kind: form.elements.kind.value, owner_id: form.elements.owner.value.trim(),
+      field: "download_enabled", enabled: true
+    }, () => {
+      form.elements.owner.value = "";
+      return "已授权该会话下载。";
+    });
+  };
+  for (const tab of document.querySelectorAll("[data-panel]")) tab.onclick = () => {
+    const panel = tab.dataset.panel;
+    $("queue").hidden = panel !== "queue";
+    $("permissions").hidden = panel !== "permissions";
+    for (const other of document.querySelectorAll("[data-panel]")) {
+      other.setAttribute("aria-pressed", String(other === tab));
+    }
+  };
+  document.addEventListener("visibilitychange", () => document.hidden ? clearTimeout(timer) : refresh());
+  await maibot.ready;
+  $("login-form").querySelector("button").disabled = false;
+</script>
+</body>
+</html>

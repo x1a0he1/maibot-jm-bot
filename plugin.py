@@ -17,6 +17,8 @@ import time
 import websockets
 from maibot_sdk import API, Field, MaiBotPlugin, PluginConfigBase
 
+from .webui_admin import JMWebUIAdmin
+
 ROOT = Path(__file__).resolve().parent
 MANIFEST = json.loads((ROOT / "_manifest.json").read_text(encoding="utf-8"))
 REPOSITORY = MANIFEST["urls"]["repository"]
@@ -25,7 +27,7 @@ SOURCE_URL = f"{REPOSITORY}/tree/v{RELEASE}"
 ADAPTER_ACTION = "maibot-team.snowluma-adapter.adapter.napcat.action.call"
 ACTIONS = frozenset({
     "send_msg", "send_group_msg", "send_private_msg",
-    "get_group_root_files", "get_group_files_by_folder", "create_group_file_folder",
+    "get_group_root_files", "get_group_files_by_folder",
     "upload_group_file", "upload_private_file", "get_group_list", "get_friend_list",
     "get_status", "get_login_info",
 })
@@ -80,6 +82,7 @@ class JmBridge(MaiBotPlugin):
         self.queue_task = None
         self.state = self.ctx.paths.data_dir.resolve()
         cfg = self.config.plugin
+        self.webui_admin = JMWebUIAdmin(cfg.admin_port, self._action)
         if os.name != "nt":
             self.ctx.logger.warning("JM-bot 此版本支持 Windows")
             return
@@ -104,6 +107,36 @@ class JmBridge(MaiBotPlugin):
     @API("status", public=False, description="JM 后端连接状态")
     async def status(self) -> dict[str, Any]:
         return {"connected": self.websocket is not None, "admin_port": self.config.plugin.admin_port}
+
+    @API("webui_login", public=False)
+    async def webui_login(self, qq_id: str, password: str) -> dict[str, Any]:
+        return await self.webui_admin.login(qq_id, password)
+
+    @API("webui_logout", public=False)
+    async def webui_logout(self, session: str) -> dict[str, Any]:
+        return await self.webui_admin.logout(session)
+
+    @API("webui_overview", public=False)
+    async def webui_overview(self, session: str, include_names: bool = False) -> dict[str, Any]:
+        return await self.webui_admin.overview(
+            session, connected=self.websocket is not None, include_names=include_names
+        )
+
+    @API("webui_scope", public=False)
+    async def webui_scope(
+        self, session: str, kind: str, owner_id: str, field: str, enabled: bool
+    ) -> dict[str, Any]:
+        return await self.webui_admin.scope(session, kind, owner_id, field, enabled)
+
+    @API("webui_global", public=False)
+    async def webui_global(self, session: str, enabled: bool) -> dict[str, Any]:
+        return await self.webui_admin.request(
+            session, "PATCH", "/api/policies/global/download", {"enabled": enabled}
+        )
+
+    @API("webui_queue_action", public=False)
+    async def webui_queue_action(self, session: str, operation: str, job_id: int) -> dict[str, Any]:
+        return await self.webui_admin.queue_action(session, operation, job_id)
 
     def get_components(self) -> list[dict[str, Any]]:
         commands = [
@@ -191,7 +224,7 @@ class JmBridge(MaiBotPlugin):
             python_paths.append(inherited_path)
         return {
             **os.environ,
-            "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1", "ONEBOT_ACCESS_TOKEN": token, "API_TIMEOUT": "90",
+            "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1", "ONEBOT_ACCESS_TOKEN": token, "API_TIMEOUT": "165",
             "PYTHONPATH": os.pathsep.join(python_paths),
             "JM_BRIDGE_STATE": str(self.state), "JM_BRIDGE_OPERATOR": cfg.operator_qq,
             "JM_BRIDGE_RUNNER_PID": str(os.getpid()), "JM_BRIDGE_LAUNCH_ID": secrets.token_hex(8),
@@ -291,8 +324,8 @@ class JmBridge(MaiBotPlugin):
                 if action in {"send_msg", "send_group_msg", "send_private_msg"}:
                     params = self._normalize_message(params)
                 result = await self._action(action, params)
-        except (KeyError, ValueError, OSError, RuntimeError) as exc:
-            self.ctx.logger.warning("JM QQ 动作 %s 失败（%s）", action, type(exc).__name__)
+        except Exception as exc:
+            self.ctx.logger.warning("JM QQ 动作 %s 失败：%s", action, exc)
             result = {"status": "failed", "retcode": 100, "data": None, "message": str(exc)}
         return {**result, "echo": packet.get("echo")}
 
@@ -328,11 +361,16 @@ class JmBridge(MaiBotPlugin):
         # A group upload is confirmed once a new matching entry is visible.
         if action == "upload_private_file":
             return await self._action(action, params)
-        listing = {"group_id": params["group_id"], "folder_id": params["folder"]}
+        folder_id = params["folder"]
+        listing = {"group_id": params["group_id"]}
+        listing_action = "get_group_root_files"
+        if folder_id != "/":
+            listing_action = "get_group_files_by_folder"
+            listing["folder_id"] = folder_id
         name, size = params["name"], file_path.stat().st_size
 
         async def matching_ids() -> set[str]:
-            result = await self._action("get_group_files_by_folder", listing)
+            result = await self._action(listing_action, listing)
             data = result.get("data") or {}
             return {
                 str(row["file_id"]) for row in data.get("files", [])
@@ -341,12 +379,22 @@ class JmBridge(MaiBotPlugin):
             }
 
         before = await matching_ids()
-        uploaded = await self._action(action, params)
-        for delay in (0, 1, 2, 3):
+        try:
+            uploaded = await self._action(action, params)
+        except Exception as exc:
+            if not isinstance(exc, TimeoutError) and getattr(exc, "code", None) != "E_TIMEOUT":
+                raise
+            # The QQ upload can still finish after the host stops waiting for the API reply.
+            self.ctx.logger.info("JM 群文件 %s 的上传回执超时，继续核对目录", name)
+            uploaded = {"status": "ok", "retcode": 0, "data": None}
+            delays = (0, 2, 4, 8, 12, 16, 20, 25, 25)
+        else:
+            delays = (0, 1, 2, 3)
+        for delay in delays:
             await asyncio.sleep(delay)
             if await matching_ids() - before:
                 return uploaded
-        raise RuntimeError("QQ 已接收上传请求，群文件尚未确认，请先核对文件列表")
+        raise RuntimeError("群文件尚未确认，请先核对文件列表")
 
     async def _action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
         response = await self.ctx.api.call(ADAPTER_ACTION, action_name=action, params=params)

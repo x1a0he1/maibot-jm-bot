@@ -8,7 +8,7 @@ from pathlib import Path
 from jmbot.core.formatter import (
     format_task_canceled,
     format_task_failed,
-    format_task_started,
+    format_task_uploaded,
     is_public_nonpersistent_failure,
 )
 from jmbot.core.jm_service import AlbumJobResult
@@ -31,6 +31,7 @@ async def process_next_album_job(
     upload_group: GroupUploader,
     upload_private: PrivateUploader,
     notify: Notifier,
+    notify_uploaded: Notifier | None = None,
     cleanup: Cleaner | None = None,
     is_canceled: CancelChecker | None = None,
 ) -> bool:
@@ -46,7 +47,6 @@ async def process_next_album_job(
     started = time.monotonic()
     LOGGER.info("Starting JM%s queue job %s for %s", job.album_id, job.id, job.destination_type)
     try:
-        await _notify_safely(notify, job, format_task_started(job.album_id))
         queue.update_progress(job.id, stage="downloading")
         result = await run_job(job)
         output_paths = result.output_paths
@@ -112,6 +112,7 @@ async def process_next_album_job(
         await _notify_safely(notify, job, format_task_failed(job.album_id, job.id, error))
     else:
         LOGGER.info("Finished JM%s queue job %s in %.1f seconds", job.album_id, job.id, time.monotonic() - started)
+        await _notify_safely(notify_uploaded or notify, job, format_task_uploaded(job, result))
 
     return True
 
@@ -120,4 +121,4 @@ async def _notify_safely(notify: Notifier, job: AlbumQueueJob, message: str) -> 
     try:
         await notify(job, message)
     except Exception:
-        return
+        LOGGER.warning("Could not notify JM%s queue job %s", job.album_id, job.id, exc_info=True)
