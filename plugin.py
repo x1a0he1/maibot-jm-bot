@@ -133,7 +133,9 @@ class JmBridge(MaiBotPlugin):
     async def jm_command(
         self, stream_id: str = "", group_id: str = "", user_id: str = "",
         platform: str = "", matched_groups: dict | None = None, message: dict | None = None,
+        **_command_context: Any,
     ) -> tuple[bool, str, bool]:
+        # MaiBot also passes command text and metadata. The captures supply the JM arguments.
         if platform != "qq" or not user_id.isdecimal() or (group_id and not group_id.isdecimal()):
             return False, "请在 QQ 群或 QQ 私聊使用 /jm。", True
         if not self.config.plugin.operator_qq:
